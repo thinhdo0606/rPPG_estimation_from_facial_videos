@@ -1,0 +1,25 @@
+# FastAPI Backend for Heart Rate Estimation Web App
+# Python 3.9+
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+websockets==12.0
+
+# ML & Deep Learning
+torch==2.1.0
+torchvision==0.16.0
+numpy==1.24.3
+scipy==1.11.3
+
+# Image & Video Processing
+opencv-python-headless==4.8.1.78
+Pillow==10.1.0
+mediapipe==0.10.9
+
+# Utilities
+pydantic==2.5.3
+python-dotenv==1.0.0
+aiofiles==23.2.1
+

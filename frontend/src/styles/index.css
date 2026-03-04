@@ -1,0 +1,261 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #ff6b6b;
+  --color-dark: #0f172a;
+  --color-darker: #0b1120;
+  --color-accent: #1e293b;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Outfit', system-ui, sans-serif;
+  background: var(--color-darker);
+  min-height: 100vh;
+  color: white;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-darker);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 107, 107, 0.4);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 107, 107, 0.6);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ffa0a0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Card glass effect */
+.glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Button styles */
+.btn-primary {
+  @apply bg-gradient-to-r from-primary-400 to-primary-500 hover:from-primary-500 hover:to-primary-600
+         text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300
+         shadow-lg shadow-primary-500/25 hover:shadow-xl hover:shadow-primary-500/35
+         hover:scale-[1.02] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100;
+}
+
+.btn-secondary {
+  @apply text-white font-medium py-3 px-6 rounded-xl transition-all duration-300;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-danger {
+  @apply text-red-300 font-medium py-3 px-6 rounded-xl transition-all duration-300;
+  background-color: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:hover {
+  background-color: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Progress bar */
+.progress-bar {
+  @apply h-2 rounded-full overflow-hidden;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.progress-fill {
+  @apply h-full rounded-full transition-all duration-300;
+  background: linear-gradient(90deg, #4ade80, #22d3ee);
+}
+
+/* ==========================================
+   WEBCAM & FACE GUIDE STYLES
+   ========================================== */
+
+.webcam-wrapper {
+  @apply relative rounded-2xl overflow-hidden shadow-2xl;
+  aspect-ratio: 4/3;
+  border: 2px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Face Guide Container */
+.face-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 42%;
+  height: 58%;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The main oval */
+.face-guide__oval {
+  position: absolute;
+  inset: 0;
+  border: 2.5px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  transition: all 0.5s ease;
+}
+
+/* Ready state (countdown) - yellow */
+.face-guide--ready .face-guide__oval {
+  border-color: rgba(250, 204, 21, 0.7);
+  border-style: solid;
+  box-shadow: 0 0 20px rgba(250, 204, 21, 0.15), inset 0 0 20px rgba(250, 204, 21, 0.05);
+}
+
+/* Active state (capturing) - green */
+.face-guide--active .face-guide__oval {
+  border-color: rgba(74, 222, 128, 0.8);
+  border-style: solid;
+  border-width: 3px;
+  box-shadow:
+    0 0 30px rgba(74, 222, 128, 0.2),
+    0 0 60px rgba(74, 222, 128, 0.1),
+    inset 0 0 30px rgba(74, 222, 128, 0.05);
+}
+
+/* Done state - primary */
+.face-guide--done .face-guide__oval {
+  border-color: rgba(255, 107, 107, 0.7);
+  border-style: solid;
+  box-shadow: 0 0 20px rgba(255, 107, 107, 0.15);
+}
+
+/* Pulse rings for active state */
+.face-guide__pulse {
+  position: absolute;
+  inset: -6px;
+  border: 2px solid rgba(74, 222, 128, 0.4);
+  border-radius: 50%;
+  animation: guide-pulse 2s ease-out infinite;
+}
+
+.face-guide__pulse--delayed {
+  animation-delay: 1s;
+}
+
+@keyframes guide-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.12);
+    opacity: 0;
+  }
+}
+
+/* ==========================================
+   STATUS BADGES
+   ========================================== */
+
+.status-badge {
+  @apply px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5;
+  backdrop-filter: blur(8px);
+}
+
+.status-badge--idle {
+  background: rgba(100, 116, 139, 0.6);
+  color: white;
+}
+
+.status-badge--countdown {
+  background: rgba(250, 204, 21, 0.7);
+  color: #1a1a2e;
+}
+
+.status-badge--capturing {
+  background: rgba(74, 222, 128, 0.15);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  color: #4ade80;
+}
+
+.status-badge--processing {
+  background: rgba(96, 165, 250, 0.6);
+  color: white;
+}
+
+.status-badge--done {
+  background: rgba(74, 222, 128, 0.6);
+  color: white;
+}
+
+.status-badge--error {
+  background: rgba(248, 113, 113, 0.6);
+  color: white;
+}
+
+/* ==========================================
+   CAPTURE TIMER BADGE
+   ========================================== */
+
+.capture-timer-badge {
+  @apply flex items-center gap-2 px-4 py-2 rounded-full;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.capture-timer-dot {
+  @apply w-2.5 h-2.5 rounded-full bg-red-500;
+  animation: blink-dot 1s ease-in-out infinite;
+}
+
+@keyframes blink-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ==========================================
+   MISC
+   ========================================== */
+
+/* Heart beat keyframes for general use */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.1);
+    opacity: 0;
+  }
+}
