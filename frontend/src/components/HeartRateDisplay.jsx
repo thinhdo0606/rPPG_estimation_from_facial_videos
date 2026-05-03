@@ -1,17 +1,38 @@
 import { motion } from 'framer-motion'
-import { Heart, TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import { Heart, TrendingDown, TrendingUp, Minus, AlertTriangle } from 'lucide-react'
 
-function HeartRateDisplay({ heartRate, confidence, isAnimating }) {
+function HeartRateDisplay({ heartRate, confidence, snr_db, isAnimating }) {
   const beatDuration = heartRate ? 60 / heartRate : 1
 
-  const getHRStatus = (hr) => {
-    if (!hr) return { label: 'Waiting...', color: 'text-gray-500', icon: Minus, bg: 'bg-gray-500/10' }
-    if (hr < 60) return { label: 'Below Normal', color: 'text-blue-400', icon: TrendingDown, bg: 'bg-blue-500/10' }
-    if (hr > 100) return { label: 'Elevated', color: 'text-yellow-400', icon: TrendingUp, bg: 'bg-yellow-500/10' }
-    return { label: 'Normal', color: 'text-green-400', icon: Minus, bg: 'bg-green-500/10' }
+  const conf = typeof confidence === 'number' && !Number.isNaN(confidence) ? confidence : null
+  const snr = typeof snr_db === 'number' && !Number.isNaN(snr_db) ? snr_db : null
+
+  /**
+   * HR bucket (Normal / Elevated / …) should only apply when the PPG is usable.
+   * Old logic used confidence >= 0.3 only, so ~33% + negative SNR still showed "Normal" — misleading.
+   * Stricter: need decent score AND not strongly noise-dominated spectrum (SNR is in-band spectral, dB).
+   */
+  const isReliable =
+    conf !== null && snr !== null ? conf >= 0.5 && snr >= -2.0 : conf !== null ? conf >= 0.55 : true
+
+  const qualityLabel =
+    conf === null || snr === null
+      ? null
+      : snr < -2 || conf < 0.35
+        ? 'Poor'
+        : snr < 0 || conf < 0.55
+          ? 'Fair'
+          : 'Good'
+
+  const getHRStatus = (hr, reliable) => {
+    if (!hr) return { label: 'Waiting...', color: 'text-slate-500', icon: Minus, bg: 'bg-slate-900/5' }
+    if (!reliable) return { label: 'Poor Signal', color: 'text-rose-700', icon: AlertTriangle, bg: 'bg-rose-500/10' }
+    if (hr < 60) return { label: 'Below Normal', color: 'text-blue-700', icon: TrendingDown, bg: 'bg-blue-500/10' }
+    if (hr > 100) return { label: 'Elevated', color: 'text-amber-700', icon: TrendingUp, bg: 'bg-amber-500/12' }
+    return { label: 'Normal', color: 'text-emerald-700', icon: Minus, bg: 'bg-emerald-500/10' }
   }
 
-  const status = getHRStatus(heartRate)
+  const status = getHRStatus(heartRate, isReliable)
   const StatusIcon = status.icon
 
   return (
@@ -33,7 +54,7 @@ function HeartRateDisplay({ heartRate, confidence, isAnimating }) {
             className={`w-12 h-12 ${
               heartRate
                 ? 'text-primary-400 fill-primary-400 drop-shadow-lg'
-                : 'text-gray-700'
+                : 'text-slate-300'
             }`}
             style={heartRate ? { filter: 'drop-shadow(0 0 8px rgba(255, 107, 107, 0.4))' } : {}}
           />
@@ -48,12 +69,12 @@ function HeartRateDisplay({ heartRate, confidence, isAnimating }) {
               transition={{ type: 'spring', duration: 0.5 }}
             >
               <span className="text-6xl font-bold gradient-text">{heartRate}</span>
-              <span className="text-xl text-gray-400 ml-1.5">BPM</span>
+              <span className="text-xl text-slate-600 ml-1.5">BPM</span>
             </motion.div>
           ) : (
             <div>
-              <span className="text-6xl font-bold text-gray-700">--</span>
-              <span className="text-xl text-gray-700 ml-1.5">BPM</span>
+              <span className="text-6xl font-bold text-slate-300">--</span>
+              <span className="text-xl text-slate-400 ml-1.5">BPM</span>
             </div>
           )}
         </div>
@@ -63,37 +84,53 @@ function HeartRateDisplay({ heartRate, confidence, isAnimating }) {
           <StatusIcon className="w-3 h-3" />
           {status.label}
         </div>
-
-        {/* Confidence Bar */}
-        {confidence !== undefined && confidence !== null && heartRate && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-xs mx-auto"
-          >
-            <div className="flex justify-between text-xs mb-1.5">
-              <span className="text-gray-500">Confidence</span>
-              <span className={`font-semibold ${
-                confidence >= 70 ? 'text-green-400' :
-                confidence >= 40 ? 'text-yellow-400' :
-                'text-red-400'
-              }`}>
-                {confidence}%
+        
+        {/* Signal Quality Details */}
+        {heartRate && conf !== null && snr !== null && (
+          <div className="mt-2 text-xs text-slate-500 flex flex-col items-center gap-2 border-t border-slate-100 pt-3">
+            {qualityLabel && (
+              <span
+                className={
+                  qualityLabel === 'Poor'
+                    ? 'text-rose-600 font-semibold'
+                    : qualityLabel === 'Fair'
+                      ? 'text-amber-700 font-medium'
+                      : 'text-emerald-700 font-medium'
+                }
+              >
+                Signal quality: {qualityLabel}
               </span>
+            )}
+            <div className="flex justify-center gap-4 w-full">
+              <div className="flex flex-col">
+                <span className="font-medium text-slate-400 mb-0.5">Quality score</span>
+                <span
+                  className={
+                    qualityLabel === 'Poor'
+                      ? 'text-rose-500 font-semibold'
+                      : qualityLabel === 'Fair'
+                        ? 'text-amber-600 font-semibold'
+                        : 'text-emerald-600 font-medium'
+                  }
+                >
+                  {Math.round(conf * 100)}%
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5">From spectral SNR</span>
+              </div>
+              <div className="w-px bg-slate-200" />
+              <div className="flex flex-col">
+                <span className="font-medium text-slate-400 mb-0.5">Spectral SNR</span>
+                <span
+                  className={
+                    snr < 0 ? 'text-amber-700 font-semibold' : 'text-slate-700 font-medium'
+                  }
+                >
+                  {snr.toFixed(1)} dB
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5">In-band peak vs rest</span>
+              </div>
             </div>
-            <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${confidence}%` }}
-                transition={{ duration: 0.8, ease: 'easeOut' }}
-                className={`h-full rounded-full ${
-                  confidence >= 70 ? 'bg-green-400' :
-                  confidence >= 40 ? 'bg-yellow-400' :
-                  'bg-red-400'
-                }`}
-              />
-            </div>
-          </motion.div>
+          </div>
         )}
       </div>
     </div>

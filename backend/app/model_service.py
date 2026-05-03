@@ -6,282 +6,51 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import sys
 from scipy import signal
 from typing import Dict, Tuple
+import time
+import math
 from .config import config
 
 
+def _spectral_snr_to_confidence(snr_db: float) -> float:
+    """
+    Map in-band spectral SNR (dB) to a 0–1 display score.
+    Same logistic as used in HR estimation; kept in one place so SNR and
+    confidence cannot drift if we change the curve later.
+    """
+    return 1.0 / (1.0 + math.exp(-0.8 * (float(snr_db) + 3.0)))
+
+
+def _ensure_numpy_pickle_compat():
+    """
+    Some checkpoints were serialized with NumPy internal paths like `numpy._core`.
+    On other environments this path may not exist (only `numpy.core` exists),
+    causing `No module named 'numpy._core'` during torch.load.
+    """
+    try:
+        import numpy.core as np_core
+        # Alias missing module path used in some pickled checkpoints.
+        if "numpy._core" not in sys.modules:
+            sys.modules["numpy._core"] = np_core
+        if hasattr(np_core, "multiarray") and "numpy._core.multiarray" not in sys.modules:
+            sys.modules["numpy._core.multiarray"] = np_core.multiarray
+    except Exception:
+        # Fallback silently; loader will raise real error if still incompatible.
+        pass
+
+
 # ==================== MODEL ARCHITECTURE ====================
-# Copy from training code - must match exactly!
+# Import from training codebase to ensure exact match and avoid duplication
+import sys
+import os
 
-class TemporalShift(nn.Module):
-    """TSM - Shift channels along temporal dimension."""
-    
-    def __init__(self, n_segment=8, n_div=8):
-        super().__init__()
-        self.n_segment = n_segment
-        self.n_div = n_div
-    
-    def forward(self, x):
-        if x.dim() == 5:
-            B, T, C, H, W = x.shape
-        else:
-            BT, C, H, W = x.shape
-            T = self.n_segment
-            B = BT // T
-            x = x.view(B, T, C, H, W)
-        
-        fold = C // self.n_div
-        out = torch.zeros_like(x)
-        out[:, 1:, :fold] = x[:, :-1, :fold]
-        out[:, :-1, fold:2*fold] = x[:, 1:, fold:2*fold]
-        out[:, :, 2*fold:] = x[:, :, 2*fold:]
-        
-        return out
+_rppg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "2stream_rppg"))
+if _rppg_path not in sys.path:
+    sys.path.append(_rppg_path)
 
-
-class CNNBlock(nn.Module):
-    """Basic CNN Block: Conv -> BN -> ReLU"""
-    
-    def __init__(self, in_ch, out_ch, kernel=3, stride=1, padding=1):
-        super().__init__()
-        self.conv = nn.Conv2d(in_ch, out_ch, kernel, stride, padding, bias=False)
-        self.bn = nn.BatchNorm2d(out_ch)
-        self.relu = nn.ReLU(inplace=True)
-    
-    def forward(self, x):
-        return self.relu(self.bn(self.conv(x)))
-
-
-class TMB(nn.Module):
-    """Temporal Module Block with temporal attention."""
-    
-    def __init__(self, channels, n_segment=128):
-        super().__init__()
-        self.n_segment = n_segment
-        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.temporal_conv = nn.Conv1d(channels, channels, 3, padding=1, groups=channels)
-    
-    def forward(self, x):
-        if x.dim() == 5:
-            B, T, C, H, W = x.shape
-            x = x.view(B * T, C, H, W)
-            reshape = True
-        else:
-            BT, C, H, W = x.shape
-            T = self.n_segment
-            B = BT // T
-            reshape = False
-        
-        identity = x
-        out = self.relu(self.bn1(self.conv1(x)))
-        
-        _, C, H_out, W_out = out.shape
-        out_t = out.view(B, T, C, H_out, W_out).mean(dim=[3, 4])
-        out_t = out_t.permute(0, 2, 1)
-        out_t = torch.sigmoid(self.temporal_conv(out_t))
-        out_t = out_t.permute(0, 2, 1).unsqueeze(-1).unsqueeze(-1)
-        
-        out = out.view(B, T, C, H_out, W_out) * out_t
-        out = out.view(B * T, C, H_out, W_out)
-        
-        out = self.bn2(self.conv2(out))
-        out = self.relu(out + identity)
-        
-        if reshape:
-            out = out.view(B, T, C, H_out, W_out)
-        return out
-
-
-class TSMBlock(nn.Module):
-    """TSM + Conv Block"""
-    
-    def __init__(self, in_ch, out_ch, stride=1, n_segment=128):
-        super().__init__()
-        self.tsm = TemporalShift(n_segment=n_segment)
-        self.conv = nn.Conv2d(in_ch, out_ch, 3, stride, 1, bias=False)
-        self.bn = nn.BatchNorm2d(out_ch)
-        self.relu = nn.ReLU(inplace=True)
-    
-    def forward(self, x):
-        if x.dim() == 5:
-            B, T, C, H, W = x.shape
-            x = self.tsm(x)
-            x = x.view(B * T, C, H, W)
-            x = self.relu(self.bn(self.conv(x)))
-            _, C_out, H_out, W_out = x.shape
-            return x.view(B, T, C_out, H_out, W_out)
-        else:
-            x = self.tsm(x)
-            return self.relu(self.bn(self.conv(x)))
-
-
-class SpatialAttention(nn.Module):
-    """Spatial attention to generate attention mask."""
-    
-    def __init__(self, in_ch, reduction=4):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_ch, in_ch // reduction, 1)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(in_ch // reduction, 1, 1)
-        self.sigmoid = nn.Sigmoid()
-    
-    def forward(self, x):
-        return self.sigmoid(self.conv2(self.relu(self.conv1(x))))
-
-
-class AttentionMask(nn.Module):
-    """Cross-stream attention from spatial to temporal."""
-    
-    def __init__(self, in_ch):
-        super().__init__()
-        self.spatial_attn = SpatialAttention(in_ch)
-        self.conv = nn.Conv2d(in_ch, in_ch, 1)
-        self.sigmoid = nn.Sigmoid()
-    
-    def forward(self, spatial_feat, temporal_feat):
-        spatial_mask = self.spatial_attn(spatial_feat)
-        attn = self.sigmoid(self.conv(spatial_feat))
-        
-        if temporal_feat.dim() == 5:
-            B, T, C, H, W = temporal_feat.shape
-            spatial_mask = spatial_mask.unsqueeze(1).expand(-1, T, -1, -1, -1)
-            attn = attn.unsqueeze(1).expand(-1, T, -1, -1, -1)
-            return temporal_feat * spatial_mask * attn
-        else:
-            BT = temporal_feat.shape[0]
-            B = spatial_feat.shape[0]
-            T = BT // B
-            spatial_mask = spatial_mask.repeat(T, 1, 1, 1)
-            attn = attn.repeat(T, 1, 1, 1)
-            return temporal_feat * spatial_mask * attn
-
-
-class AvgPoolDropout(nn.Module):
-    """Average Pooling + Dropout"""
-    
-    def __init__(self, pool_size=2, dropout=0.25):
-        super().__init__()
-        self.avgpool = nn.AvgPool2d(pool_size, pool_size)
-        self.dropout = nn.Dropout2d(dropout)
-    
-    def forward(self, x):
-        if x.dim() == 5:
-            B, T, C, H, W = x.shape
-            x = x.view(B * T, C, H, W)
-            x = self.dropout(self.avgpool(x))
-            _, C, H_out, W_out = x.shape
-            return x.view(B, T, C, H_out, W_out)
-        return self.dropout(self.avgpool(x))
-
-
-class SpatialStream(nn.Module):
-    """Spatial Attention Stream"""
-    
-    def __init__(self, in_ch=3, dropout=0.25):
-        super().__init__()
-        self.stage1 = nn.Sequential(
-            CNNBlock(in_ch, 32),
-            CNNBlock(32, 32)
-        )
-        self.pool1 = AvgPoolDropout(2, dropout)
-        self.attn1 = AttentionMask(32)
-        
-        self.stage2 = nn.Sequential(
-            CNNBlock(32, 64, stride=2),
-            CNNBlock(64, 64)
-        )
-        self.pool2 = AvgPoolDropout(2, dropout)
-        self.attn2 = AttentionMask(64)
-    
-    def forward(self, mean_frame):
-        if mean_frame.dim() == 5:
-            mean_frame = mean_frame.squeeze(1)
-        
-        f1 = self.pool1(self.stage1(mean_frame))
-        f2 = self.pool2(self.stage2(f1))
-        
-        return f1, f2, self.attn1, self.attn2
-
-
-class TemporalStream(nn.Module):
-    """Temporal Stream"""
-    
-    def __init__(self, in_ch=3, n_segment=128, dropout=0.25):
-        super().__init__()
-        self.n_segment = n_segment
-        
-        self.conv1 = CNNBlock(in_ch, 32)
-        self.tmb1 = TMB(32, n_segment)
-        self.pool1 = AvgPoolDropout(2, dropout)
-        
-        self.tsm2 = TSMBlock(32, 64, stride=2, n_segment=n_segment)
-        self.tmb2 = TMB(64, n_segment)
-        self.pool2 = AvgPoolDropout(2, dropout)
-    
-    def forward(self, diff_frames, sf1, sf2, attn1, attn2):
-        B, T, C, H, W = diff_frames.shape
-        
-        x = diff_frames.view(B * T, C, H, W)
-        x = self.conv1(x)
-        _, C1, H1, W1 = x.shape
-        x = x.view(B, T, C1, H1, W1)
-        x = self.tmb1(x)
-        x = self.pool1(x)
-        x = attn1(sf1, x)
-        
-        x = self.tsm2(x)
-        x = self.tmb2(x)
-        x = self.pool2(x)
-        x = attn2(sf2, x)
-        
-        return x
-
-
-class TSCSTNet(nn.Module):
-    """TS-CST Net: Two-Stream Convolutional Spatial-Temporal Network"""
-    
-    def __init__(self, clip_length=128, hidden_dim=128, dropout=0.5):
-        super().__init__()
-        
-        self.spatial_stream = SpatialStream(dropout=0.25)
-        self.temporal_stream = TemporalStream(n_segment=clip_length, dropout=0.25)
-        
-        self.fc1 = nn.Linear(64, hidden_dim)
-        self.dropout = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(hidden_dim, 1)
-        
-        self._init_weights()
-    
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, 0, 0.01)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-    
-    def forward(self, diff_frames, mean_frame):
-        B, T, _, _, _ = diff_frames.shape
-        
-        sf1, sf2, attn1, attn2 = self.spatial_stream(mean_frame)
-        x = self.temporal_stream(diff_frames, sf1, sf2, attn1, attn2)
-        
-        x = x.view(B * T, 64, -1).mean(dim=2)
-        
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        
-        return x.view(B, T)
+from nets.models.MTTS_CSTM_Adjust import MTTS_CSTM
 
 
 # ==================== MODEL SERVICE ====================
@@ -305,55 +74,123 @@ class HeartRateEstimator:
     def _load_model(self):
         """Load the trained model"""
         print(f"Loading model from {self.model_path}...")
+        _ensure_numpy_pickle_compat()
         
-        # Create model
-        self.model = TSCSTNet(
-            clip_length=config.CLIP_LENGTH,
-            hidden_dim=128,
-            dropout=0.5
+        # Population statistics computed from real webcam face crops (36x36, RGB, [0,1] space).
+        # The model divides raw pixel values by 255 internally, so these stats are in [0,1].
+        # Appearance stream: mean/std of raw face frames
+        # Motion stream: mean/std of frame differences (near-zero mean, small std)
+        pop_mean = [
+            [0.599, 0.518, 0.506],   # appearance: R,G,B mean
+            [-0.000476, -0.000676, -0.000727],  # motion: near-zero
+        ]
+        pop_std = [
+            [0.177, 0.181, 0.180],   # appearance
+            [0.0285, 0.0264, 0.0280],  # motion: small (frame differences are tiny)
+        ]
+        self.model = MTTS_CSTM(
+            frame_depth=10,
+            pop_mean=pop_mean,
+            pop_std=pop_std,
+            eca=False,
+            shift_factor=0.5,
+            skip=True,
+            group_on=False
         )
         
-        # Load weights
-        checkpoint = torch.load(self.model_path, map_location=self.device)
+        # Apply dynamic quantization ONLY if we are loading the INT8 quantized model
+        if "quantized_int8" in str(config.MODEL_PATH):
+            self.model = torch.quantization.quantize_dynamic(
+                self.model, 
+                {torch.nn.Linear}, 
+                dtype=torch.qint8
+            )
         
-        # Handle different checkpoint formats
+        # Load weights — handle both full checkpoint dict and bare state_dict files
+        try:
+            checkpoint = torch.load(
+                self.model_path,
+                map_location="cpu",   # always load to CPU first
+                weights_only=False,   # needed for older checkpoints with numpy metadata
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to load checkpoint: {e}") from e
+        
+        # Extract state dict from various checkpoint formats
         if isinstance(checkpoint, dict):
-            if 'model_state_dict' in checkpoint:
-                self.model.load_state_dict(checkpoint['model_state_dict'])
-            elif 'state_dict' in checkpoint:
-                self.model.load_state_dict(checkpoint['state_dict'])
+            if "model" in checkpoint:
+                state_dict = checkpoint["model"]          # format used by main_Hao_Summary.py
+            elif "model_state_dict" in checkpoint:
+                state_dict = checkpoint["model_state_dict"]
+            elif "state_dict" in checkpoint:
+                state_dict = checkpoint["state_dict"]
             else:
-                self.model.load_state_dict(checkpoint)
+                state_dict = checkpoint                   # bare state dict
         else:
-            self.model.load_state_dict(checkpoint)
+            state_dict = checkpoint
         
+        # If state dict is FP16 (saved with .half()), upcast to FP32 for accurate CPU inference
+        state_dict_fp32 = {k: v.float() if v.dtype == torch.float16 else v
+                           for k, v in state_dict.items()}
+        
+        self.model.load_state_dict(state_dict_fp32)
         self.model = self.model.to(self.device)
         self.model.eval()
         
         print(f"Model loaded successfully on {self.device}")
     
     @torch.no_grad()
-    def predict(self, diff_frames: np.ndarray, mean_frame: np.ndarray) -> Dict:
+    def predict(self, faces_array: np.ndarray) -> Dict:
         """
         Predict heart rate from preprocessed frames
         
         Args:
-            diff_frames: (T-1, C, H, W) difference frames
-            mean_frame: (1, C, H, W) mean frame
+            faces_array: (T, C, H, W) frames
             
         Returns:
             Dict with heart rate info
         """
-        # Add batch dimension
-        diff_tensor = torch.from_numpy(diff_frames).unsqueeze(0).float().to(self.device)
-        mean_tensor = torch.from_numpy(mean_frame).unsqueeze(0).float().to(self.device)
+        t0 = time.perf_counter()
+
+        T_total = len(faces_array)
+        window_length = 10
+        stride = 1  # 1-frame stride for smooth overlapping
         
-        # Forward pass
-        ppg_signal = self.model(diff_tensor, mean_tensor)
-        ppg_signal = ppg_signal.cpu().numpy()[0]  # (T,)
+        ppg_accum = np.zeros(T_total - 1)
+        counts = np.zeros(T_total - 1)
+        t1 = time.perf_counter()
+        
+        for i in range(0, T_total - window_length, stride):
+            chunk = faces_array[i:i + window_length + 1] # shape (11, C, H, W)
+            if len(chunk) < window_length + 1:
+                break
+                
+            motion_frames = chunk[1:] - chunk[:-1]
+            app_frames = chunk[:-1]
+            
+            x = np.stack([motion_frames, app_frames], axis=0) # (2, 10, C, H, W)
+            x_tensor = torch.from_numpy(x).unsqueeze(0).float().to(self.device) # (1, 2, 10, C, H, W)
+            
+            out = self.model(x_tensor) # out shape: (1, 10)
+            pred = out[0].cpu().numpy()
+            
+            ppg_accum[i:i + window_length] += pred
+            counts[i:i + window_length] += 1
+            
+        valid_mask = counts > 0
+        ppg_signal = ppg_accum[valid_mask] / counts[valid_mask]
+        t2 = time.perf_counter()
         
         # Calculate heart rate from PPG signal
         hr_result = self._estimate_hr_from_ppg(ppg_signal, config.FRAME_RATE)
+        t3 = time.perf_counter()
+
+        hr_result["benchmark"] = {
+            "input_prep_ms": (t1 - t0) * 1000.0,
+            "forward_ms": (t2 - t1) * 1000.0,
+            "postprocess_ms": (t3 - t2) * 1000.0,
+            "inference_ms": (t3 - t1) * 1000.0,
+        }
         
         return hr_result
     
@@ -383,9 +220,10 @@ class HeartRateEstimator:
         )
         ppg_filtered = signal.filtfilt(b, a, ppg_detrend)
         
-        # FFT
+        # FFT with Hamming window to reduce spectral leakage
         n = len(ppg_filtered)
-        fft_result = np.fft.rfft(ppg_filtered)
+        window_func = np.hamming(n)
+        fft_result = np.fft.rfft(ppg_filtered * window_func)
         frequencies = np.fft.rfftfreq(n, d=1/fps)
         
         # Find valid frequency range
@@ -404,20 +242,40 @@ class HeartRateEstimator:
         # Clamp to valid range
         hr = np.clip(hr, config.HR_MIN, config.HR_MAX)
         
-        # Calculate confidence (SNR)
+        # Calculate robust confidence (Spectral SNR)
         if len(valid_power) > 0:
-            peak_power = valid_power[peak_idx]
-            noise_power = np.mean(valid_power)
-            snr = peak_power / (noise_power + 1e-8)
-            confidence = min(snr / 10, 1.0)  # Normalize to 0-1
+            # 1. Define frequency window around the peak
+            # Since a 4-second clip has poor frequency resolution (~0.23 Hz/bin),
+            # we need a wider window to capture the main lobe (e.g., +/- 0.35 Hz)
+            window = 0.35
+            peak_mask = (valid_freqs >= dominant_freq - window) & (valid_freqs <= dominant_freq + window)
+            
+            # 2. Calculate signal power (energy around the peak)
+            signal_power = np.sum(valid_power[peak_mask] ** 2)
+            
+            # 3. Calculate noise power (energy of all other frequencies in the band)
+            noise_mask = ~peak_mask
+            noise_power = np.sum(valid_power[noise_mask] ** 2)
+            
+            if noise_power > 0:
+                snr_ratio = signal_power / noise_power
+                snr_db = 10 * np.log10(snr_ratio)  # Convert to dB
+            else:
+                snr_db = 10.0
+
+            snr_val = float(snr_db)
+            # Confidence always derived from the same snr_val (single source of truth)
+            confidence = _spectral_snr_to_confidence(snr_val)
         else:
-            confidence = 0
+            confidence = 0.0
+            snr_val = 0.0
         
         return {
             'heart_rate': float(hr),
             'confidence': float(confidence),
+            'snr_db': float(snr_val),
             'unit': 'BPM',
-            'ppg_signal': ppg_signal.tolist()
+            'ppg_signal': ppg_filtered.tolist()
         }
 
 

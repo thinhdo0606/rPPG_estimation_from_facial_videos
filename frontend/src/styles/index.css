@@ -4,9 +4,12 @@
 
 :root {
   --color-primary: #ff6b6b;
-  --color-dark: #0f172a;
-  --color-darker: #0b1120;
-  --color-accent: #1e293b;
+  /* Light theme tokens */
+  --color-bg: #f8fafc;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-card: rgba(255, 255, 255, 0.78);
+  --color-card-border: rgba(15, 23, 42, 0.08);
 }
 
 * {
@@ -21,9 +24,12 @@ html {
 
 body {
   font-family: 'Outfit', system-ui, sans-serif;
-  background: var(--color-darker);
+  background:
+    radial-gradient(1200px 600px at 15% 20%, rgba(255, 107, 107, 0.10) 0%, rgba(255, 107, 107, 0) 60%),
+    radial-gradient(900px 500px at 85% 30%, rgba(34, 211, 238, 0.12) 0%, rgba(34, 211, 238, 0) 55%),
+    var(--color-bg);
   min-height: 100vh;
-  color: white;
+  color: var(--color-text);
   overflow-x: hidden;
 }
 
@@ -33,7 +39,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-darker);
+  background: rgba(15, 23, 42, 0.04);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -55,9 +61,12 @@ body {
 
 /* Card glass effect */
 .glass-card {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-card);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-card-border);
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
 }
 
 /* Button styles */
@@ -69,14 +78,14 @@ body {
 }
 
 .btn-secondary {
-  @apply text-white font-medium py-3 px-6 rounded-xl transition-all duration-300;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  @apply text-slate-800 font-medium py-3 px-6 rounded-xl transition-all duration-300;
+  background-color: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(15, 23, 42, 0.10);
 }
 
 .btn-secondary:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.14);
 }
 
 .btn-danger {
@@ -93,7 +102,7 @@ body {
 /* Progress bar */
 .progress-bar {
   @apply h-2 rounded-full overflow-hidden;
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(15, 23, 42, 0.06);
 }
 
 .progress-fill {
@@ -108,7 +117,7 @@ body {
 .webcam-wrapper {
   @apply relative rounded-2xl overflow-hidden shadow-2xl;
   aspect-ratio: 4/3;
-  border: 2px solid rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(15, 23, 42, 0.08);
 }
 
 /* Face Guide Container */
@@ -129,7 +138,7 @@ body {
 .face-guide__oval {
   position: absolute;
   inset: 0;
-  border: 2.5px dashed rgba(255, 255, 255, 0.25);
+  border: 2.5px dashed rgba(15, 23, 42, 0.18);
   border-radius: 50%;
   transition: all 0.5s ease;
 }
@@ -193,8 +202,8 @@ body {
 }
 
 .status-badge--idle {
-  background: rgba(100, 116, 139, 0.6);
-  color: white;
+  background: rgba(148, 163, 184, 0.55);
+  color: rgba(15, 23, 42, 0.85);
 }
 
 .status-badge--countdown {
@@ -209,8 +218,9 @@ body {
 }
 
 .status-badge--processing {
-  background: rgba(96, 165, 250, 0.6);
-  color: white;
+  background: rgba(96, 165, 250, 0.22);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  color: rgba(30, 64, 175, 0.95);
 }
 
 .status-badge--done {
@@ -229,7 +239,7 @@ body {
 
 .capture-timer-badge {
   @apply flex items-center gap-2 px-4 py-2 rounded-full;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(74, 222, 128, 0.3);
 }

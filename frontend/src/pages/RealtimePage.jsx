@@ -130,7 +130,8 @@ function RealtimePage() {
       if (data.success) {
         setResult({
           heartRate: Math.round(data.heart_rate),
-          confidence: Math.round(data.confidence * 100),
+          confidence: data.confidence,
+          snr_db: data.snr_db,
           ppgSignal: data.ppg_signal || [],
           totalFrames: capturedFrames.length,
           duration: duration
@@ -178,7 +179,7 @@ function RealtimePage() {
         <h1 className="text-3xl font-bold mb-2">
           <span className="gradient-text">Real-time</span> Heart Rate
         </h1>
-        <p className="text-gray-400">
+        <p className="text-slate-600">
           Position your face in the guide and stay still during measurement
         </p>
       </motion.div>
@@ -313,7 +314,7 @@ function RealtimePage() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-2"
             >
-              <div className="flex justify-between text-sm text-gray-400">
+              <div className="flex justify-between text-sm text-slate-600">
                 <span>{elapsed}s / {duration}s</span>
                 <span>{frameCount} frames</span>
               </div>
@@ -365,7 +366,7 @@ function RealtimePage() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 text-red-300"
+              className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-700"
             >
               <div className="flex items-center gap-2 mb-1">
                 <AlertCircle className="w-5 h-5" />
@@ -398,14 +399,14 @@ function RealtimePage() {
                     className={`py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                       duration === opt.value
                         ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/30'
-                        : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                        : 'bg-slate-900/5 text-slate-600 hover:bg-slate-900/10 hover:text-slate-900'
                     }`}
                   >
                     {opt.label}
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-500 mt-2 text-center">
+              <p className="text-xs text-slate-500 mt-2 text-center">
                 Longer duration = more accurate results
               </p>
             </motion.div>
@@ -423,7 +424,7 @@ function RealtimePage() {
                   <circle
                     cx="60" cy="60" r={circleRadius}
                     fill="none"
-                    stroke="rgba(255,255,255,0.08)"
+                    stroke="rgba(15, 23, 42, 0.08)"
                     strokeWidth="8"
                   />
                   <circle
@@ -445,10 +446,10 @@ function RealtimePage() {
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <span className="text-3xl font-bold text-white">{remaining}</span>
-                  <span className="text-xs text-gray-400">seconds</span>
+                  <span className="text-xs text-white/80">seconds</span>
                 </div>
               </div>
-              <p className="text-gray-400 text-sm mt-3 font-medium">Keep still, measuring...</p>
+              <p className="text-white/85 text-sm mt-3 font-medium">Keep still, measuring...</p>
               <div className="flex items-center gap-2 mt-2">
                 <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                 <span className="text-green-400 text-xs font-medium">{frameCount} frames</span>
@@ -460,6 +461,7 @@ function RealtimePage() {
           <HeartRateDisplay
             heartRate={result?.heartRate}
             confidence={result?.confidence}
+            snr_db={result?.snr_db}
             isAnimating={state === STATE.RESULT}
           />
 
@@ -482,13 +484,13 @@ function RealtimePage() {
               transition={{ delay: 0.3 }}
               className="glass-card rounded-2xl p-5"
             >
-              <h3 className="font-semibold mb-3 text-sm text-gray-300">Measurement Details</h3>
+              <h3 className="font-semibold mb-3 text-sm text-slate-700">Measurement Details</h3>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-white/5 rounded-lg p-3">
+                <div className="bg-slate-900/5 rounded-lg p-3">
                   <p className="text-gray-500 text-xs">Duration</p>
                   <p className="font-semibold">{result.duration}s</p>
                 </div>
-                <div className="bg-white/5 rounded-lg p-3">
+                <div className="bg-slate-900/5 rounded-lg p-3">
                   <p className="text-gray-500 text-xs">Frames</p>
                   <p className="font-semibold">{result.totalFrames}</p>
                 </div>
@@ -507,7 +509,7 @@ function RealtimePage() {
                 <CheckCircle className="w-4 h-4 text-primary-400" />
                 How to Measure
               </h3>
-              <ul className="space-y-2.5 text-gray-400 text-sm">
+              <ul className="space-y-2.5 text-slate-600 text-sm">
                 <li className="flex items-start gap-2">
                   <span className="w-5 h-5 rounded-full bg-primary-500/20 text-primary-400 text-xs flex items-center justify-center shrink-0 mt-0.5">1</span>
                   Position your face inside the green oval guide

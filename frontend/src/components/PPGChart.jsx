@@ -51,14 +51,14 @@ function PPGChart({ data }) {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                border: '1px solid rgba(15, 23, 42, 0.10)',
                 borderRadius: '10px',
-                color: '#fff',
+                color: '#0f172a',
                 fontSize: '12px',
                 padding: '8px 12px'
               }}
-              labelStyle={{ color: '#6b7280', fontSize: '11px' }}
+              labelStyle={{ color: '#64748b', fontSize: '11px' }}
             />
             <Area
               type="monotone"
@@ -72,7 +72,7 @@ function PPGChart({ data }) {
         </ResponsiveContainer>
       </div>
 
-      <p className="text-[10px] text-gray-600 mt-2 text-center">
+      <p className="text-[10px] text-slate-500 mt-2 text-center">
         Photoplethysmogram (PPG) signal extracted from facial video
       </p>
     </motion.div>

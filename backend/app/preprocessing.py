@@ -7,6 +7,7 @@ import numpy as np
 import mediapipe as mp
 from typing import List, Tuple, Optional
 import base64
+from pathlib import Path
 from .config import config
 
 
@@ -115,47 +116,112 @@ class FaceProcessor:
                 last_bbox = bbox
             
             face = self.crop_face(frame, bbox)
+            face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
             cropped_faces.append(face)
         
         faces_array = np.array(cropped_faces, dtype=np.float32)
-        faces_array = faces_array / 255.0
+        # The images are already [0, 255] because they come from cv2.
         
-        diff_frames = np.diff(faces_array, axis=0)
-        mean_frame = np.mean(faces_array, axis=0, keepdims=True)
+        # (T, H, W, C) -> (T, C, H, W)
+        faces_array = np.transpose(faces_array, (0, 3, 1, 2))
         
-        diff_frames = np.transpose(diff_frames, (0, 3, 1, 2))
-        mean_frame = np.transpose(mean_frame, (0, 3, 1, 2))
-        
-        return diff_frames, mean_frame
+        return faces_array
     
     def __del__(self):
         if hasattr(self, 'face_detection'):
             self.face_detection.close()
 
 
-def decode_video_bytes(video_bytes: bytes) -> List[np.ndarray]:
-    """Decode video from bytes to list of frames"""
+def _resize_frame_max_edge(frame: np.ndarray, max_edge: int) -> np.ndarray:
+    """Resize so longest side <= max_edge (keeps aspect ratio)."""
+    h, w = frame.shape[:2]
+    m = max(h, w)
+    if m <= max_edge:
+        return frame
+    scale = max_edge / float(m)
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
+    return cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+
+def _video_temp_suffix(original_name: str = "") -> str:
+    suf = Path(original_name or "").suffix.lower()
+    if suf in (".mp4", ".avi", ".mov", ".webm", ".mkv", ".m4v"):
+        return suf
+    return ".mp4"
+
+
+def extract_first_frame_jpeg_base64(video_bytes: bytes, original_name: str = "") -> Optional[str]:
+    """
+    Read the first decodable frame via OpenCV and return JPEG as raw base64 (no data-URL prefix).
+    Uses the file extension from original_name so codecs (e.g. AVI) are probed correctly.
+    """
     import tempfile
     import os
-    
-    with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
+
+    suffix = _video_temp_suffix(original_name)
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         f.write(video_bytes)
         temp_path = f.name
-    
+
+    try:
+        cap = cv2.VideoCapture(temp_path)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            return None
+        edge = int(config.VIDEO_DECODE_MAX_EDGE)
+        if edge > 0:
+            frame = _resize_frame_max_edge(frame, edge)
+        ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+        if not ok:
+            return None
+        return base64.b64encode(buf.tobytes()).decode("ascii")
+    finally:
+        os.unlink(temp_path)
+
+
+def decode_video_bytes(video_bytes: bytes, original_name: str = ""):
+    """
+    Decode video from bytes to a list of frames and FPS.
+
+    - Reads at most config.MAX_VIDEO_DURATION_SEC worth of frames (plus one read
+      after cap may report low FPS) to cap RAM for long files.
+    - Downscales each frame if wider/taller than config.VIDEO_DECODE_MAX_EDGE
+      before face detection / stacking.
+    """
+    import tempfile
+    import os
+
+    suffix = _video_temp_suffix(original_name)
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(video_bytes)
+        temp_path = f.name
+
     try:
         frames = []
         cap = cv2.VideoCapture(temp_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        
-        while True:
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        if fps <= 1e-3 or fps > 240.0:
+            fps = float(config.FRAME_RATE)
+
+        max_sec = float(config.MAX_VIDEO_DURATION_SEC)
+        max_frames = int(max_sec * fps) + 2
+        max_frames = max(max_frames, config.CLIP_LENGTH + 1)
+        max_frames = min(max_frames, int(max_sec * 120) + 2)
+
+        edge = int(config.VIDEO_DECODE_MAX_EDGE)
+        for _ in range(max_frames):
             ret, frame = cap.read()
             if not ret:
                 break
+            if edge > 0:
+                frame = _resize_frame_max_edge(frame, edge)
             frames.append(frame)
-        
+
         cap.release()
         return frames, fps
-        
+
     finally:
         os.unlink(temp_path)
 

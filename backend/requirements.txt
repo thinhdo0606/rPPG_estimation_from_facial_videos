@@ -17,9 +17,11 @@ scipy==1.11.3
 opencv-python-headless==4.8.1.78
 Pillow==10.1.0
 mediapipe==0.10.9
+imageio-ffmpeg>=0.4.9
 
 # Utilities
 pydantic==2.5.3
 python-dotenv==1.0.0
 aiofiles==23.2.1
+psutil==5.9.8
 

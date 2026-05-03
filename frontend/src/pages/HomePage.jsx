@@ -49,7 +49,7 @@ function HomePage() {
             <span className="gradient-text">Heart Rate</span> Monitor
           </h1>
           
-          <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-10">
+          <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-10">
             Measure your heart rate contactlessly using AI-powered facial analysis. 
             No wearables needed - just your camera.
           </p>
@@ -88,13 +88,13 @@ function HomePage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 + index * 0.1 }}
-                  className="glass-card p-6 rounded-2xl hover:bg-white/10 transition-all duration-300"
+                  className="glass-card p-6 rounded-2xl hover:bg-slate-900/5 transition-all duration-300"
                 >
                   <div className="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center mb-4">
                     <Icon className="w-6 h-6 text-primary-400" />
                   </div>
                   <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-                  <p className="text-gray-400 text-sm">{feature.description}</p>
+                  <p className="text-slate-600 text-sm">{feature.description}</p>
                 </motion.div>
               )
             })}
@@ -109,19 +109,18 @@ function HomePage() {
             <div>
               <div className="flex items-center gap-2 text-primary-400 mb-4">
                 <Cpu className="w-5 h-5" />
-                <span className="font-medium">Powered by Deep Learning</span>
+                <span className="font-medium">About this website</span>
               </div>
               <h2 className="text-3xl font-bold mb-4">
-                TS-CST Net Technology
+                Contactless Heart Rate Monitoring
               </h2>
-              <p className="text-gray-400 mb-6">
-                Our system uses a Two-Stream Convolutional Spatial-Temporal Network 
-                to analyze subtle color changes in your face that correspond to blood flow. 
-                This remote photoplethysmography (rPPG) technique can estimate your heart rate 
-                with high accuracy.
+              <p className="text-slate-600 mb-6">
+                This website is a research-oriented prototype for estimating heart rate from facial video.
+                The goal is to provide a simple, accessible way to monitor heart rate without wearables by using only a camera.
+                You can measure in real time with guided face alignment, or upload a short video for analysis and waveform visualization.
               </p>
               <div className="flex flex-wrap gap-3">
-                {['rPPG', 'Deep Learning', 'Face Detection', 'Real-time'].map((tag) => (
+                {['Remote monitoring', 'Camera-based', 'Privacy-aware', 'Research prototype'].map((tag) => (
                   <span 
                     key={tag}
                     className="px-3 py-1 rounded-full bg-primary-500/20 text-primary-400 text-sm"
@@ -170,7 +169,7 @@ function HomePage() {
             >
               <div className="text-5xl font-bold gradient-text mb-4">{item.step}</div>
               <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
-              <p className="text-gray-400">{item.desc}</p>
+              <p className="text-slate-600">{item.desc}</p>
             </motion.div>
           ))}
         </div>
