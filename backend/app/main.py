@@ -4,7 +4,7 @@ Supports video upload and real-time webcam
 """
 from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional, Dict
@@ -12,6 +12,7 @@ import numpy as np
 import time
 import json
 import asyncio
+import os
 from collections import deque
 from pathlib import Path
 
@@ -607,6 +608,16 @@ async def startup_event():
     print(f"  CORS Origins: {config.CORS_ORIGINS}")
     print("=" * 60)
 
+# ==================== SERVE FRONTEND ====================
+
+# This must be at the end so it doesn't override API routes
+if os.path.exists("static"):
+    app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+    @app.exception_handler(404)
+    async def not_found_exception_handler(request, exc):
+        """Fallback to index.html for React SPA routing"""
+        return FileResponse("static/index.html")
 
 # ==================== MAIN ====================
 

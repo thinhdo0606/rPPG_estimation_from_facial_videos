@@ -93,7 +93,7 @@ class HeartRateEstimator:
             pop_mean=pop_mean,
             pop_std=pop_std,
             eca=False,
-            shift_factor=0.5,
+            shift_factor=0.25,
             skip=True,
             group_on=False
         )

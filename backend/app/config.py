@@ -7,7 +7,7 @@ from pathlib import Path
 class Config:
     # Paths
     BASE_DIR = Path(__file__).parent.parent
-    MODEL_PATH = BASE_DIR / "models" / "MTTS_CSTM_fp16.pth"
+    MODEL_PATH = BASE_DIR / "models" / "MTTS_CSTM_UBFC_T_10_shift_0.25_combined_loss_best_model_5_fp16.pth"
     
     # Model parameters (must match training config)
     FACE_SIZE = 36
